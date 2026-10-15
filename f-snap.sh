@@ -7,6 +7,7 @@
 # -E (errtrace) matters as much as -e here: without it bash does NOT inherit the ERR trap into
 # shell functions, so a failure inside any function below would exit silently.
 set -Eeuo pipefail
+FSNAP_VERSION="1.0.0"
 LOGFILE="$(dirname "$0")/f-snap.log"
 
 APPLIST="$(dirname "$0")/apps.conf"
@@ -21,7 +22,7 @@ usage() {
   cat <<'USAGE'
 Usage: ./f-snap.sh [--dry-run] [--stores-only | --replace-apps]
                    [--flatpak-dir=PATH | --keep-flatpak-dir]
-                   [--snapd-dir=PATH | --keep-snapd-dir] [--help]
+                   [--snapd-dir=PATH | --keep-snapd-dir] [--version] [--help]
 
   --stores-only        Only offer to move the snapd and Flatpak stores off the root partition;
                        replace no apps. Automatic on systems that are not Ubuntu or a flavor.
@@ -51,6 +52,7 @@ Usage: ./f-snap.sh [--dry-run] [--stores-only | --replace-apps]
                        right answer depends on whether the system store is on the root
                        partition. The two stores are separate OSTree repositories, so
                        switching later means re-downloading.
+  --version            Print the f-snap version.
   --help, -h           This text.
 
 apps.conf is a catalog: f-snap replaces only the Snaps from it that are installed on this
@@ -99,6 +101,7 @@ for arg in "$@"; do
                           user|system) ;;
                           *) echo "❌ --install-scope must be 'user' or 'system'."; exit 2 ;;
                         esac ;;
+    --version)          echo "f-snap $FSNAP_VERSION"; exit 0 ;;
     --help|-h)          usage; exit 0 ;;
     *)                  echo "❌ Unknown option: $arg"; echo; usage; exit 2 ;;
   esac
@@ -136,6 +139,7 @@ else
   echo -e "\n--- Run started at $(date) ---\n" >> "$LOGFILE"
   echo -e "\n🧠 Starting f-snap..."
   log "Timestamp: $(date)"
+  log "f-snap version: $FSNAP_VERSION"
 fi
 
 # Fail LOUDLY and on the record: every failure is logged with its line, command and exit code.

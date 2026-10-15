@@ -90,6 +90,7 @@ After a reboot, check the result:
 | `--install-scope=system\|user` | Which Flatpak store new apps go into. Skips that question. |
 | `--keep-support-snaps` | Keep support snaps even when nothing uses them. |
 | `--disable-mozillateam-ppa`, `--keep-mozillateam-ppa` | Answer the offer to disable an old Mozilla PPA. |
+| `--version` | Print the f-snap version. |
 
 `./f-snap.sh --help` lists them all.
 
@@ -145,7 +146,7 @@ f-snap adds Mozilla's repository only when it is replacing Firefox or Thunderbir
 
 ## Help
 
-Open an issue on [GitHub](https://github.com/markrusselldev/f-snap/issues) with your flavor, release, and the end of `f-snap.log`.
+Open an issue on [GitHub](https://github.com/markrusselldev/f-snap/issues) with your flavor, release, the f-snap version (`./f-snap.sh --version`), and the end of `f-snap.log`. What changed in each version is in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 
