@@ -7,6 +7,14 @@ and f-snap follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-16
+
+### Fixed
+- Firefox and Thunderbird swaps no longer stop at the pre-flight on systems with Ubuntu's empty
+  `firefox-locale-*` or `thunderbird-locale-*` packages (Ubuntu Kylin, Ubuntu Unity, and
+  Ubuntu's Extended selection). The swap removes them and installs Mozilla's language pack for
+  the system locale, so the app keeps the language the snap showed.
+
 ## [1.0.0] - 2026-10-15
 
 ### Added

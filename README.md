@@ -36,18 +36,25 @@ f-snap swaps an app only when the replacement is better for you, never just beca
 | App Center, Firmware Updater, Security Center, prompting-client, snapd-desktop-integration, hwctl, Budgie Welcome | stay snaps | These are Ubuntu's own system tools. Ubuntu ships them as snaps and builds on them; on 26.04 App Center is its one place to manage apps, debs included. Swapping them would make the system more fragile, not better. |
 | Theme snaps (Breeze, Orchis) | removed once unused | They only theme other snaps, so f-snap removes them when no snap app is left to use them. |
 
-## Tested on *(system verified 2026-10-14)*
+## Tested on *(system verified 2026-10-16)*
 
 Each of these was installed fresh in a virtual machine, with `/home` on its own disk, and taken through the dry run, the real run with both stores moved, `verify-f-snap.sh`, a reboot, and `undo-f-snap.sh`:
 
 | 26.04.1 | Snaps replaced |
 |---|---|
-| Ubuntu | Firefox |
+| Ubuntu, Default selection | Firefox |
+| Ubuntu, Extended selection, installed in English and in German | Firefox, Thunderbird |
 | Kubuntu, with Krita and Element ticked in the installer | Firefox, Thunderbird, Element, Krita |
+| Lubuntu, with Element, Thunderbird and Krita ticked in the installer | Firefox, Thunderbird, Element, Krita |
+| Ubuntu Unity (26.04, the latest image), with Element, Thunderbird and Krita ticked | Firefox, Thunderbird, Element, Krita |
 | Ubuntu Studio | Firefox, Thunderbird |
 | Xubuntu | Firefox, Thunderbird |
+| Edubuntu | Firefox, Thunderbird |
+| Ubuntu Cinnamon | Firefox, Thunderbird |
+| Ubuntu Budgie | Firefox |
+| Ubuntu Kylin | Firefox |
 
-The other flavors (Edubuntu, Lubuntu, Ubuntu MATE, Budgie, Cinnamon, Kylin, Unity) install a subset of these snaps but have not been tested themselves. Older Ubuntu releases have not been tested.
+Ubuntu MATE has no 26.04 image, so it has not been tested. Older Ubuntu releases have not been tested.
 
 On a system that is not Ubuntu or a flavor (Debian, Linux Mint, Pop!_OS), f-snap only offers to move the snap and Flatpak stores. Its app swaps are built for Ubuntu's packages.
 
@@ -143,6 +150,8 @@ Firefox and Thunderbird give each installation its own profile, and a new instal
 ### Mozilla's repository
 
 f-snap adds Mozilla's repository only when it is replacing Firefox or Thunderbird. It checks the signing key against the fingerprint Mozilla publishes before trusting it, writes one sources file with both the Firefox and Thunderbird suites, and pins Mozilla's packages above Ubuntu's. Ubuntu's own `firefox` and `thunderbird` packages only install the snap, and their version numbers outrank Mozilla's (an epoch), so they are blocked and the swap is made with `--allow-downgrades`. Mozilla's ESR packages, and Thunderbird's beta and nightly ones, share files with the regular packages, so if one is installed f-snap swaps it out in the same step instead of failing halfway.
+
+The snaps carry every language. Mozilla's packages carry English, with each other language as its own package. Ubuntu's `firefox-locale-*` and `thunderbird-locale-*` packages are empty placeholders for the snaps, so f-snap removes them in the same step and installs Mozilla's language pack for your system's language. Firefox and Thunderbird keep the language the snap showed.
 
 ## Help
 

@@ -7,7 +7,7 @@
 # -E (errtrace) matters as much as -e here: without it bash does NOT inherit the ERR trap into
 # shell functions, so a failure inside any function below would exit silently.
 set -Eeuo pipefail
-FSNAP_VERSION="1.0.0"
+FSNAP_VERSION="1.0.1"
 LOGFILE="$(dirname "$0")/f-snap.log"
 
 APPLIST="$(dirname "$0")/apps.conf"
@@ -857,6 +857,69 @@ esr_swaps() {
   return 0
 }
 
+# The locales the system runs in, most specific first: the environment, then the system-wide
+# setting the installer wrote and every login inherits (man 5 locale.conf; on 26.04
+# /etc/default/locale is a symlink to it). LANGUAGE is a colon list. Values may be quoted.
+system_locales() {
+  local v f
+  for v in "${LC_ALL:-}" "${LC_MESSAGES:-}" "${LANG:-}" "${LANGUAGE:-}"; do
+    [[ -n "$v" ]] && tr ':' '\n' <<<"$v"
+  done
+  for f in /etc/locale.conf /etc/default/locale; do
+    [[ -r "$f" ]] || continue
+    sed -n 's/^\(LC_ALL\|LC_MESSAGES\|LANG\|LANGUAGE\)=//p' "$f" | tr -d "\"'" | tr ':' '\n'
+    break
+  done
+  return 0
+}
+
+# Mozilla's language pack for one locale, or nothing. $1 is the app, $2 a locale such as
+# zh_CN.UTF-8. Mozilla names packs by its own codes (zh-cn, pt-br, es-es, nb-no): try the
+# language and region, then the language alone, then the language's own region (es-es for
+# es_UY, pt-pt for pt_AO), then the first region on offer, as Firefox falls back from es-UY to
+# es-ES. English needs no pack unless the exact region has one: en-US is built in.
+mozilla_langpack() {
+  local app="$1" loc="$2" lang code c v
+  loc="${loc%%.*}"; loc="${loc%%@*}"
+  [[ -z "$loc" || "$loc" == C || "$loc" == POSIX ]] && return 0
+  code="$(tr '[:upper:]_' '[:lower:]-' <<<"$loc")"
+  # Hong Kong and Macau write Traditional Chinese, which Mozilla packs as zh-tw.
+  [[ "$code" == zh-hk || "$code" == zh-mo ]] && code=zh-tw
+  lang="${code%%-*}"
+  for c in "$app-l10n-$code" "$app-l10n-$lang" "$app-l10n-$lang-$lang"; do
+    v="$(apt_candidate "$c")"
+    if [[ -n "$v" && "$v" != "(none)" ]]; then printf '%s\n' "$c"; return 0; fi
+  done
+  [[ "$lang" == en ]] && return 0
+  apt-cache pkgnames "$app-l10n-$lang-" 2>/dev/null | sort | head -n 1
+  return 0
+}
+
+# Ubuntu's firefox-locale-* and thunderbird-locale-* are empty transitional packages that depend
+# on Ubuntu's stub, so replacing the stub removes them (Kylin, Unity and Ubuntu's Extended
+# selection install them). Name each with apt's "pkg-" suffix so the removal is part of
+# the planned transaction, and add Mozilla's language pack for each system locale: the snap
+# bundles every language, Mozilla's deb ships en-US only. Prints the words to add to the install
+# call; the packs depend on the exact app version, so they belong in the same call.
+language_swaps() {
+  local p stub ver loc pack seen=" "
+  for p in "$@"; do
+    [[ "$p" == firefox || "$p" == thunderbird ]] || continue
+    # Only the transitional stubs (version 1snap1); a locale package with content would still
+    # make the pre-flight refuse.
+    while read -r stub ver; do
+      [[ -n "$stub" && "$ver" == *snap* ]] && pkg_installed "$stub" && printf '%s-\n' "$stub"
+    done < <(dpkg-query -W -f='${Package} ${Version}\n' "$p-locale-*" 2>/dev/null || true)
+    while read -r loc; do
+      pack="$(mozilla_langpack "$p" "$loc")"
+      [[ -n "$pack" && "$seen" != *" $pack "* ]] || continue
+      seen+="$pack "
+      printf '%s\n' "$pack"
+    done < <(system_locales)
+  done
+  return 0
+}
+
 # The target may name several packages, space-separated. They install in one apt-get call,
 # which is the exact call pre-flight simulates. $2 is the app, which says whether a vendor repo is involved.
 install_deb_app() {
@@ -903,14 +966,22 @@ install_deb_app() {
   done
   ((${#todo[@]})) || return 0
 
-  local swaps=() s
+  local swaps=() langs=() s
   mapfile -t swaps < <(esr_swaps "${todo[@]}")
+  mapfile -t langs < <(language_swaps "${todo[@]}")
   echo -e "\n🔧 Installing ${todo[*]} via APT..."
   for s in "${swaps[@]}"; do
     echo "   Replacing ${s%-}: it ships the same files, so the two cannot be installed together."
     ((DRY_RUN)) || log "esr_replaced=${s%-}"
   done
-  run sudo apt-get install -y --allow-downgrades "${todo[@]}" "${swaps[@]}" </dev/null
+  for s in "${langs[@]}"; do
+    if [[ "$s" == *- ]]; then
+      echo "   Removing ${s%-}: an empty transitional package for Ubuntu's stub."
+    else
+      echo "   Adding $s: Mozilla's language pack for this system's locale."
+    fi
+  done
+  run sudo apt-get install -y --allow-downgrades "${todo[@]}" "${swaps[@]}" "${langs[@]}" </dev/null
   ((DRY_RUN)) && return 0
 
   for pkg in "${todo[@]}"; do
@@ -1042,15 +1113,16 @@ preflight_all() {
         continue
       fi
       # Exactly the command phase 2 runs, so a pass here means a pass there.
-      local swaps=()
+      local swaps=() langs=()
       mapfile -t swaps < <(esr_swaps "${todo[@]}")
-      sim="$(apt_simulate install -y --allow-downgrades "${todo[@]}" "${swaps[@]}")"
+      mapfile -t langs < <(language_swaps "${todo[@]}")
+      sim="$(apt_simulate install -y --allow-downgrades "${todo[@]}" "${swaps[@]}" "${langs[@]}")"
       if grep -q '^E:' <<<"$sim"; then
         problems+=("$app: apt will not install '${todo[*]}' - $(printf '%s\n' "$sim" | grep -m1 '^E:')")
         continue
       fi
       removals="$(printf '%s\n' "$sim" | awk '/^Remv /{print $2}' \
-        | grep -vxF -f <(printf '%s\n' "${todo[@]}" "${swaps[@]%-}") || true)"
+        | grep -vxF -f <(printf '%s\n' "${todo[@]}" "${swaps[@]%-}" "${langs[@]%-}") || true)"
       if [[ -n "$removals" ]]; then
         problems+=("$app: installing '${todo[*]}' would also REMOVE $(printf '%s' "$removals" | tr '\n' ' ')")
         continue
@@ -1059,6 +1131,13 @@ preflight_all() {
       if ((${#swaps[@]})); then
         echo "     It replaces ${swaps[*]%-}, which ships the same files."
       fi
+      for p in "${langs[@]}"; do
+        if [[ "$p" == *- ]]; then
+          echo "     It removes ${p%-}, an empty transitional package for Ubuntu's stub."
+        else
+          echo "     It adds $p, Mozilla's language pack for this system's locale."
+        fi
+      done
 
     else
       if flatpak info "$FLATPAK_SCOPE" "$target" >/dev/null 2>&1; then
